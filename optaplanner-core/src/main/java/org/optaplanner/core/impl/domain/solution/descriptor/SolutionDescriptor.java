@@ -34,8 +34,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 import com.google.common.collect.Iterators;
 import org.apache.commons.lang3.tuple.MutablePair;
@@ -76,6 +74,8 @@ import org.optaplanner.core.impl.domain.lookup.LookUpStrategyResolver;
 import org.optaplanner.core.impl.domain.policy.DescriptorPolicy;
 import org.optaplanner.core.impl.domain.solution.AbstractSolution;
 import org.optaplanner.core.impl.domain.solution.cloner.FieldAccessingSolutionCloner;
+import org.optaplanner.core.impl.domain.solution.util.Cache;
+import org.optaplanner.core.impl.domain.solution.util.ConcurrentCache;
 import org.optaplanner.core.impl.domain.variable.descriptor.GenuineVariableDescriptor;
 import org.optaplanner.core.impl.domain.variable.descriptor.ShadowVariableDescriptor;
 import org.optaplanner.core.impl.domain.variable.descriptor.VariableDescriptor;
@@ -162,7 +162,7 @@ public class SolutionDescriptor<Solution_> {
     private final Map<Class<?>, EntityDescriptor<Solution_>> entityDescriptorMap;
     private final List<Class<?>> reversedEntityClassList;
 
-    private final ConcurrentMap<Class<?>, EntityDescriptor<Solution_>> lowestEntityDescriptorCache = new ConcurrentHashMap<>();
+    private final Cache<Class<?>, EntityDescriptor<Solution_>> lowestEntityDescriptorCache = new ConcurrentCache<>();
     private LookUpStrategyResolver lookUpStrategyResolver = null;
 
     // ************************************************************************
@@ -825,7 +825,7 @@ public class SolutionDescriptor<Solution_> {
     }
 
     public EntityDescriptor<Solution_> findEntityDescriptor(Class<?> entitySubclass) {
-        return lowestEntityDescriptorCache.computeIfAbsent(entitySubclass, key -> {
+        return lowestEntityDescriptorCache.retrieveOrComputeAndStore(entitySubclass, key -> {
             // Reverse order to find the nearest ancestor
             for (Class<?> entityClass : reversedEntityClassList) {
                 if (entityClass.isAssignableFrom(entitySubclass)) {

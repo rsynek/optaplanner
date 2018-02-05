@@ -42,8 +42,6 @@ import java.util.SortedMap;
 import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.optaplanner.core.api.domain.solution.PlanningSolution;
@@ -52,6 +50,8 @@ import org.optaplanner.core.api.domain.solution.cloner.SolutionCloner;
 import org.optaplanner.core.impl.domain.common.ReflectionHelper;
 import org.optaplanner.core.impl.domain.common.accessor.MemberAccessor;
 import org.optaplanner.core.impl.domain.solution.descriptor.SolutionDescriptor;
+import org.optaplanner.core.impl.domain.solution.util.Cache;
+import org.optaplanner.core.impl.domain.solution.util.ConcurrentCache;
 
 /**
  * @param <Solution_> the solution type, the class with the {@link PlanningSolution} annotation
@@ -60,10 +60,10 @@ public class FieldAccessingSolutionCloner<Solution_> implements SolutionCloner<S
 
     protected final SolutionDescriptor<Solution_> solutionDescriptor;
 
-    protected final ConcurrentMap<Class<?>, Constructor<?>> constructorCache = new ConcurrentHashMap<>();
-    protected final ConcurrentMap<Class<?>, List<Field>> fieldListCache = new ConcurrentHashMap<>();
-    protected final ConcurrentMap<Pair<Field, Class<?>>, Boolean> deepCloneDecisionFieldCache = new ConcurrentHashMap<>();
-    protected final ConcurrentMap<Class<?>, Boolean> deepCloneDecisionActualValueClassCache = new ConcurrentHashMap<>();
+    protected final Cache<Class<?>, Constructor<?>> constructorCache = new ConcurrentCache<>();
+    protected final Cache<Class<?>, List<Field>> fieldListCache = new ConcurrentCache<>();
+    protected final Cache<Pair<Field, Class<?>>, Boolean> deepCloneDecisionFieldCache = new ConcurrentCache<>();
+    protected final Cache<Class<?>, Boolean> deepCloneDecisionActualValueClassCache = new ConcurrentCache<>();
 
     public FieldAccessingSolutionCloner(SolutionDescriptor<Solution_> solutionDescriptor) {
         this.solutionDescriptor = solutionDescriptor;
@@ -86,7 +86,7 @@ public class FieldAccessingSolutionCloner<Solution_> implements SolutionCloner<S
      */
     @SuppressWarnings("unchecked")
     protected <C> Constructor<C> retrieveCachedConstructor(Class<C> clazz) {
-        return (Constructor<C>) constructorCache.computeIfAbsent(clazz, key -> {
+        return (Constructor<C>) constructorCache.retrieveOrComputeAndStore(clazz, key -> {
             Constructor<C> constructor;
             try {
                 constructor = clazz.getDeclaredConstructor();
@@ -106,7 +106,7 @@ public class FieldAccessingSolutionCloner<Solution_> implements SolutionCloner<S
      * @return never null
      */
     protected <C> List<Field> retrieveCachedFields(Class<C> clazz) {
-        return fieldListCache.computeIfAbsent(clazz, key -> {
+        return fieldListCache.retrieveOrComputeAndStore(clazz, key -> {
             Field[] fields = clazz.getDeclaredFields();
             List<Field> fieldList = new ArrayList<>(fields.length);
             for (Field field : fields) {
@@ -128,7 +128,7 @@ public class FieldAccessingSolutionCloner<Solution_> implements SolutionCloner<S
      */
     protected boolean retrieveDeepCloneDecision(Field field, Class<?> fieldInstanceClass, Class<?> actualValueClass) {
         Pair<Field, Class<?>> pair = Pair.of(field, fieldInstanceClass);
-        Boolean deepCloneDecision = deepCloneDecisionFieldCache.computeIfAbsent(pair,
+        Boolean deepCloneDecision = deepCloneDecisionFieldCache.retrieveOrComputeAndStore(pair,
                 key -> isFieldDeepCloned(field, fieldInstanceClass));
         return deepCloneDecision || retrieveDeepCloneDecisionForActualValueClass(actualValueClass);
     }
@@ -209,7 +209,7 @@ public class FieldAccessingSolutionCloner<Solution_> implements SolutionCloner<S
      * @return never null
      */
     protected boolean retrieveDeepCloneDecisionForActualValueClass(Class<?> actualValueClass) {
-        return deepCloneDecisionActualValueClassCache.computeIfAbsent(actualValueClass,
+        return deepCloneDecisionActualValueClassCache.retrieveOrComputeAndStore(actualValueClass,
                 key -> isClassDeepCloned(actualValueClass));
     }
 
