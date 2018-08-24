@@ -91,12 +91,6 @@ public class SolverConfigMultiThreadedTest {
         runSolvingAndVerifySolution(10, 20, "256");
     }
 
-    @Ignore("PLANNER-1180")
-    @Test(timeout = 5000L)
-    public void solvingOfVerySmallProblemFinishes() {
-        runSolvingAndVerifySolution(1, 1, "2");
-    }
-
     private void runSolvingAndVerifySolution(final int entityCount, final int valueCount, final String moveThreadCount) {
         SolverFactory<TestdataSolution> solverFactory = PlannerTestUtils.buildSolverFactory(
                 TestdataSolution.class, TestdataEntity.class);
