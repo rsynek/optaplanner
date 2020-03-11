@@ -23,7 +23,9 @@ import org.optaplanner.core.api.score.stream.Constraint;
 import org.optaplanner.core.api.score.stream.ConstraintCollectors;
 import org.optaplanner.core.api.score.stream.ConstraintFactory;
 import org.optaplanner.core.api.score.stream.ConstraintProvider;
+import org.optaplanner.core.api.score.stream.Joiners;
 import org.optaplanner.examples.machinereassignment.domain.MrBalancePenalty;
+import org.optaplanner.examples.machinereassignment.domain.MrGlobalPenaltyInfo;
 import org.optaplanner.examples.machinereassignment.domain.MrMachine;
 import org.optaplanner.examples.machinereassignment.domain.MrMachineCapacity;
 import org.optaplanner.examples.machinereassignment.domain.MrProcessAssignment;
@@ -40,12 +42,15 @@ public class MachineReassignmentConstraintProvider implements ConstraintProvider
     public Constraint[] defineConstraints(ConstraintFactory factory) {
         return new Constraint[]{
                 // hard constraints
+
                 maximumCapacity(factory),
                 serviceConflict(factory),
                 serviceLocationSpread(factory),
                 serviceDependency(factory),
                 transientUsage(factory),
+
                 // soft constraints
+
                 loadCost(factory),
                 balanceCost(factory),
                 processMoveCost(factory),
@@ -157,7 +162,8 @@ public class MachineReassignmentConstraintProvider implements ConstraintProvider
                 .filter(((machineCapacity, usage) -> machineCapacity.getSafetyCapacity() < usage))
                 .penalizeLong(MrConstraints.LOAD_COST,
                         HardSoftLongScore.ONE_SOFT,
-                        (machineCapacity, usage) -> usage - machineCapacity.getSafetyCapacity());
+                        (machineCapacity, usage) -> machineCapacity.getResource().getLoadCostWeight()
+                                * (usage - machineCapacity.getSafetyCapacity()));
     }
 
     /**
@@ -180,18 +186,22 @@ public class MachineReassignmentConstraintProvider implements ConstraintProvider
         long targetAvailability =
                 machine.getMachineCapacity(penalty.getTargetResource()).getMaximumCapacity() - targetUsage;
         long balanceCost = penalty.getMultiplicand() * originalAvailability - targetAvailability;
-        return Math.max(0, balanceCost);
+        return Math.max(0, balanceCost) * penalty.getWeight();
     }
 
     /**
      * Process move cost: A process has a move cost.
      */
     private Constraint processMoveCost(ConstraintFactory factory) {
-        return factory.from(MrProcessAssignment.class)
-                .filter(MrProcessAssignment::isMoved)
+        return factory.from(MrGlobalPenaltyInfo.class)
+                .filter(penalty -> penalty.getProcessMoveCostWeight() > 0)
+                .join(MrProcessAssignment.class,
+                        Joiners.filtering((penalty, processAssignment) -> processAssignment.isMoved()
+                                && processAssignment.getProcessMoveCost() > 0))
                 .penalizeLong(MrConstraints.PROCESS_MOVE_COST,
                         HardSoftLongScore.ONE_SOFT,
-                        MrProcessAssignment::getProcessMoveCost);
+                        (penalty, processAssignment) ->
+                                processAssignment.getProcessMoveCost() * penalty.getProcessMoveCostWeight());
     }
 
     /**
@@ -202,17 +212,24 @@ public class MachineReassignmentConstraintProvider implements ConstraintProvider
                 .filter(MrProcessAssignment::isMoved)
                 .groupBy(processAssignment -> processAssignment.getService(), ConstraintCollectors.count())
                 .groupBy(ConstraintCollectors.max((BiFunction<MrService, Integer, Integer>) (service, count) -> count))
-                .penalizeLong(MrConstraints.SERVICE_MOVE_COST, HardSoftLongScore.ONE_SOFT, count -> count);
+                .join(MrGlobalPenaltyInfo.class)
+                .penalizeLong(MrConstraints.SERVICE_MOVE_COST, HardSoftLongScore.ONE_SOFT,
+                        (count, penalty) -> count * penalty.getServiceMoveCostWeight());
     }
 
     /**
      * Machine move cost: Moving a process from machine A to machine B has another A-B specific move cost.
      */
     private Constraint machineMoveCost(ConstraintFactory factory) {
-        return factory.from(MrProcessAssignment.class)
-                .filter(MrProcessAssignment::isMoved)
+        return factory.from(MrGlobalPenaltyInfo.class)
+                .filter(penalty -> penalty.getMachineMoveCostWeight() > 0)
+                .join(MrProcessAssignment.class,
+                        Joiners.filtering((penalty, processAssignment) -> processAssignment.isMoved()
+                                && processAssignment.getMachineMoveCost() > 0
+                        ))
                 .penalizeLong(MrConstraints.MACHINE_MOVE_COST,
                         HardSoftLongScore.ONE_SOFT,
-                        MrProcessAssignment::getMachineMoveCost);
+                        (penalty, processAssignment) ->
+                                processAssignment.getMachineMoveCost() * penalty.getMachineMoveCostWeight());
     }
 }

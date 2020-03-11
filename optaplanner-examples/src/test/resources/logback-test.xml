@@ -9,7 +9,7 @@
   </appender>
 
   <!-- To override the info log level from the command line, use the VM option "-Dlogback.level.org.optaplanner=trace" -->
-  <logger name="org.optaplanner" level="${logback.level.org.optaplanner:-info}"/>
+  <logger name="org.optaplanner" level="${logback.level.org.optaplanner:-debug}"/>
   <!-- Don't pollute the test log with a stacktrace -->
   <logger name="org.optaplanner.benchmark.impl.DefaultPlannerBenchmark.singleBenchmarkRunnerException" level="error"/>
 

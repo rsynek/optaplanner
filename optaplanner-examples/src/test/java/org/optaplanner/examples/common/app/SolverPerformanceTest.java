@@ -32,6 +32,7 @@ import org.optaplanner.core.api.score.Score;
 import org.optaplanner.core.api.score.constraint.ConstraintMatchTotal;
 import org.optaplanner.core.api.solver.Solver;
 import org.optaplanner.core.api.solver.SolverFactory;
+import org.optaplanner.core.config.localsearch.LocalSearchPhaseConfig;
 import org.optaplanner.core.config.solver.EnvironmentMode;
 import org.optaplanner.core.config.solver.SolverConfig;
 import org.optaplanner.core.config.solver.termination.TerminationConfig;
@@ -99,6 +100,15 @@ public abstract class SolverPerformanceTest<Solution_> extends LoggingTest {
         assertScoreAndConstraintMatches(solverFactory, bestSolution, bestScoreLimitString);
     }
 
+    protected void runSpeedTest(File unsolvedDataFile, int stepCountLimit, EnvironmentMode environmentMode) {
+        SolverFactory<Solution_> solverFactory = buildSolverFactory(stepCountLimit, environmentMode);
+        Solution_ problem = solutionFileIO.read(unsolvedDataFile);
+        logger.info("Opened: {}", unsolvedDataFile);
+        Solver<Solution_> solver = solverFactory.buildSolver();
+        Solution_ bestSolution = solver.solve(problem);
+        assertScoreAndConstraintMatches(solverFactory, bestSolution);
+    }
+
     protected SolverFactory<Solution_> buildSolverFactory(String bestScoreLimitString, EnvironmentMode environmentMode) {
         SolverConfig solverConfig = SolverConfig.createFromXmlResource(solverConfigResource);
         solverConfig.withEnvironmentMode(environmentMode)
@@ -108,16 +118,30 @@ public abstract class SolverPerformanceTest<Solution_> extends LoggingTest {
         return SolverFactory.create(solverConfig);
     }
 
+    protected SolverFactory<Solution_> buildSolverFactory(int stepCountLimit, EnvironmentMode environmentMode) {
+        SolverConfig solverConfig = SolverConfig.createFromXmlResource(solverConfigResource);
+        solverConfig.withEnvironmentMode(environmentMode)
+                .withMoveThreadCount(moveThreadCount);
+        LocalSearchPhaseConfig localSearchPhaseConfig = (LocalSearchPhaseConfig) solverConfig.getPhaseConfigList().stream()
+                .filter(phaseConfig -> LocalSearchPhaseConfig.class.isAssignableFrom(phaseConfig.getClass()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("No LocalSearch phase configured!"));
+        localSearchPhaseConfig.setTerminationConfig(new TerminationConfig().withStepCountLimit(stepCountLimit));
+        return SolverFactory.create(solverConfig);
+    }
+
     private void assertScoreAndConstraintMatches(SolverFactory<Solution_> solverFactory,
-            Solution_ bestSolution, String bestScoreLimitString) {
+                                                 Solution_ bestSolution, String bestScoreLimitString) {
         assertNotNull(bestSolution);
         InnerScoreDirectorFactory<Solution_> scoreDirectorFactory
                 = (InnerScoreDirectorFactory<Solution_>) solverFactory.getScoreDirectorFactory();
         Score bestScore = scoreDirectorFactory.getSolutionDescriptor().getScore(bestSolution);
         ScoreDefinition scoreDefinition = scoreDirectorFactory.getScoreDefinition();
-        Score bestScoreLimit = scoreDefinition.parseScore(bestScoreLimitString);
-        assertTrue("The bestScore (" + bestScore + ") must be at least the bestScoreLimit (" + bestScoreLimit + ").",
-                bestScore.compareTo(bestScoreLimit) >= 0);
+        if (bestScoreLimitString != null) {
+            Score bestScoreLimit = scoreDefinition.parseScore(bestScoreLimitString);
+            assertTrue("The bestScore (" + bestScore + ") must be at least the bestScoreLimit (" + bestScoreLimit + ").",
+                    bestScore.compareTo(bestScoreLimit) >= 0);
+        }
 
         try (ScoreDirector<Solution_> scoreDirector = scoreDirectorFactory.buildScoreDirector()) {
             scoreDirector.setWorkingSolution(bestSolution);
@@ -135,4 +159,8 @@ public abstract class SolverPerformanceTest<Solution_> extends LoggingTest {
         }
     }
 
+    private void assertScoreAndConstraintMatches(SolverFactory<Solution_> solverFactory,
+                                                 Solution_ bestSolution) {
+        assertScoreAndConstraintMatches(solverFactory, bestSolution, null);
+    }
 }
